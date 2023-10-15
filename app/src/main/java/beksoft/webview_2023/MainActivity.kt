@@ -1,94 +1,71 @@
 package beksoft.webview_2023
 import android.os.Bundle
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.appcompat.app.AppCompatActivity
-import java.io.File
-import java.io.FileOutputStream
+import android.net.LocalServerSocket
+import java.net.ServerSocket
 
 class MainActivity : AppCompatActivity() {
-    private var goServerProcess: Process? = null
+    private val port = findAvailablePort()
+    private val serverSocket = LocalServerSocket("my-local-server")
+    private val webContent = "<html><body><h1>Hej med dig</h1></body></html>"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        // Start the Go server
-        startGoServer()
-
-        // Initialize WebView
         val webView = findViewById<WebView>(R.id.webView)
-        webView.webViewClient = WebViewClient()
         webView.settings.javaScriptEnabled = true
+        webView.webViewClient = object : WebViewClient() {
+            override fun shouldInterceptRequest(
+                view: WebView,
+                url: String
+            ): WebResourceResponse? {
+                // Serve your HTML content from here
+                if (url == "http://127.0.0.1:$port/") {
+                    val inputStream = webContent.byteInputStream()
+                    return WebResourceResponse("text/html", "UTF-8", inputStream)
+                }
+                return null
+            }
+        }
 
-        // Load the WebView with localhost:8080
-        webView.loadUrl("http://localhost:8080")
+        // Start the server
+        startServer()
+
+        // Load the WebView with the local server URL
+        webView.loadUrl("http://127.0.0.1:$port/")
     }
 
     override fun onDestroy() {
         super.onDestroy()
-
-        // Stop the Go server when the app is destroyed
-        stopGoServer()
+        // Close the server socket when the app is destroyed
+        serverSocket.close()
     }
 
-    private fun startGoServer() {
-        try {
-            val commandPath = File(filesDir, "android-server").absolutePath
-            val processBuilder = ProcessBuilder("chmod", "755", commandPath)
-            processBuilder.start().waitFor()
-
-            val processBuilderServer = ProcessBuilder(commandPath)
-            processBuilderServer.redirectErrorStream(true)
-            goServerProcess = processBuilderServer.start()
-            // Handle the output or any other necessary actions
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+    // Find an available port
+    private fun findAvailablePort(): Int {
+        val socket = ServerSocket(0) // 0 indicates any available port
+        val port = socket.localPort
+        socket.close()
+        return port
     }
 
-
-
-    private fun stopGoServer() {
-        goServerProcess?.destroy()
-    }
-}
-
-
-/*
-package beksoft.webview_2023
-import android.os.Bundle
-import android.webkit.WebSettings
-import android.webkit.WebView
-import androidx.appcompat.app.AppCompatActivity
-
-class MainActivity : AppCompatActivity() {
-    private lateinit var webView: WebView
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-
-        super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
-
-        webView = findViewById(R.id.webView)
-        val webSettings: WebSettings = webView.settings
-        webSettings.javaScriptEnabled = true // Enable JavaScript
-        webView.loadUrl("https://videndjurs.dk") // Load your website here
-
-        /*
-        super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
-
-        webView = findViewById(R.id.webView)
-        val webSettings: WebSettings = webView.settings
-        webSettings.javaScriptEnabled = true // Enable JavaScript
-
-        // Load the local HTML file from res/raw
-        // note that if we use file:// then we cant use javascript
-        //webView.loadUrl("file:///android_res/raw/index.html")
-        webView.loadUrl("https://netflix.com") */
-
-
+    // Start the local server
+    private fun startServer() {
+        Thread {
+            val socket = serverSocket.accept()
+            val outputStream = socket.outputStream
+            val response = "HTTP/1.1 200 OK\r\n" +
+                    "Content-Type: text/html\r\n" +
+                    "Content-Length: ${webContent.length}\r\n" +
+                    "Connection: close\r\n\r\n" +
+                    webContent
+            outputStream.write(response.toByteArray())
+            outputStream.close()
+            socket.close()
+        }.start()
     }
 }
-*/
